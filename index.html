@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f5f0e8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>阅 · 读书助手</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600&family=Source+Sans+3:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app" class="app" data-view="shelf">
+
+    <!-- 书架 -->
+    <section id="view-shelf" class="view view-shelf" aria-label="书架">
+      <header class="header">
+        <div class="header-brand">
+          <span class="brand-mark" aria-hidden="true">阅</span>
+          <div>
+            <h1 class="brand-title">读书助手</h1>
+            <p class="brand-sub">实体书笔记 · 纯前端本地保存</p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn btn-primary" id="btn-add-book" aria-label="添加书籍">
+            <span aria-hidden="true">+</span> 添加
+          </button>
+          <button type="button" class="btn-icon" id="btn-shelf-settings" aria-label="外观设置">⚙</button>
+        </div>
+      </header>
+
+      <div id="shelf-empty" class="shelf-empty hidden">
+        <div class="empty-icon" aria-hidden="true">📖</div>
+        <p class="empty-title">书架还是空的</p>
+        <p class="empty-desc">添加正在读的实体书，随时记下章节与心得</p>
+        <button type="button" class="btn btn-primary" id="btn-add-first">添加第一本书</button>
+      </div>
+
+      <ul id="book-list" class="book-list" role="list"></ul>
+    </section>
+
+    <!-- 实体书笔记 -->
+    <section id="view-notes" class="view view-notes hidden" aria-label="读书笔记">
+      <header class="notes-toolbar">
+        <button type="button" class="btn-icon" id="btn-notes-back" aria-label="返回书架">←</button>
+        <div class="reader-meta">
+          <h2 id="notes-book-title" class="reader-title">未命名</h2>
+          <p id="notes-book-meta" class="reader-progress-text"></p>
+        </div>
+        <button type="button" class="btn-icon" id="btn-notes-settings" aria-label="外观设置">⚙</button>
+        <button type="button" class="btn-icon" id="btn-notes-more" aria-label="更多操作">⋯</button>
+      </header>
+
+      <div id="notes-empty" class="notes-empty hidden">
+        <p class="notes-empty-title">还没有笔记</p>
+        <p class="notes-empty-desc">读到精彩处，点右下角按钮快速记下</p>
+      </div>
+
+      <ul id="notes-list" class="notes-list" role="list"></ul>
+
+      <button type="button" class="fab" id="btn-add-note" aria-label="记笔记">
+        <span aria-hidden="true">✎</span>
+      </button>
+    </section>
+
+    <!-- 电子书阅读 -->
+    <section id="view-reader" class="view view-reader hidden" aria-label="阅读">
+      <header class="reader-toolbar" id="reader-toolbar">
+        <button type="button" class="btn-icon" id="btn-back" aria-label="返回书架">←</button>
+        <div class="reader-meta">
+          <h2 id="reader-title" class="reader-title">未命名</h2>
+          <p id="reader-progress-text" class="reader-progress-text">0%</p>
+        </div>
+        <div class="toolbar-actions">
+          <button type="button" class="btn-icon" id="btn-reader-notes" aria-label="查看笔记" title="笔记">✎</button>
+          <button type="button" class="btn-icon" id="btn-settings" aria-label="阅读设置">⚙</button>
+        </div>
+      </header>
+
+      <div class="progress-bar" aria-hidden="true">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
+
+      <article id="reader-content" class="reader-content" tabindex="0"></article>
+
+      <footer class="reader-footer" id="reader-footer">
+        <button type="button" class="btn-ghost" id="btn-scroll-top">回到顶部</button>
+        <span id="reader-word-count" class="reader-word-count"></span>
+      </footer>
+
+      <!-- 点击区域翻页提示（滚动模式下隐藏） -->
+      <div id="tap-zones" class="tap-zones hidden" aria-hidden="true">
+        <button type="button" class="tap-zone tap-prev" id="tap-prev" aria-label="上一页"></button>
+        <button type="button" class="tap-zone tap-center" id="tap-center" aria-label="切换工具栏"></button>
+        <button type="button" class="tap-zone tap-next" id="tap-next" aria-label="下一页"></button>
+      </div>
+    </section>
+
+    <!-- 记笔记 / 编辑笔记（独立页面） -->
+    <section id="view-note-edit" class="view view-note-edit hidden" aria-label="编辑笔记">
+      <header class="note-edit-toolbar">
+        <button type="button" class="btn-icon" id="btn-note-edit-back" aria-label="返回">←</button>
+        <div class="reader-meta">
+          <h2 id="note-edit-heading" class="reader-title">记笔记</h2>
+          <p id="note-edit-subtitle" class="reader-progress-text"></p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="btn-note-save">保存</button>
+      </header>
+
+      <form id="form-note-edit" class="note-edit-form">
+        <label class="field">
+          <span class="field-label">章节</span>
+          <input type="text" id="note-edit-chapter" class="field-input" placeholder="例：第一章" maxlength="60">
+        </label>
+
+        <label class="field">
+          <span class="field-label">笔记内容</span>
+          <textarea id="note-edit-content" class="field-textarea" rows="5" placeholder="摘抄原文、要点…"></textarea>
+        </label>
+
+        <label class="field">
+          <span class="field-label">疑问</span>
+          <textarea id="note-edit-question" class="field-textarea" rows="3" placeholder="没看懂的地方、想查的问题…"></textarea>
+        </label>
+
+        <label class="field">
+          <span class="field-label">感想</span>
+          <textarea id="note-edit-reflection" class="field-textarea" rows="4" placeholder="读后的体会与联想…"></textarea>
+        </label>
+
+        <button type="button" class="btn btn-ghost action-danger note-delete-btn hidden" id="btn-note-delete">删除这条笔记</button>
+      </form>
+    </section>
+
+    <!-- 添加书籍 -->
+    <dialog id="dialog-add" class="dialog">
+      <form id="form-add" class="dialog-body" method="dialog">
+        <header class="dialog-header">
+          <h3>添加书籍</h3>
+          <button type="button" class="btn-icon dialog-close" data-close aria-label="关闭">×</button>
+        </header>
+
+        <div class="settings-group">
+          <span class="field-label">书籍类型</span>
+          <div class="chip-group" role="group" aria-label="书籍类型">
+            <button type="button" class="chip active" data-book-type="physical" id="chip-physical">实体书</button>
+            <button type="button" class="chip" data-book-type="digital" id="chip-digital">电子书</button>
+          </div>
+        </div>
+
+        <label class="field">
+          <span class="field-label">书名</span>
+          <input type="text" id="input-title" class="field-input" placeholder="例：活着" maxlength="120">
+        </label>
+
+        <label class="field" id="field-author">
+          <span class="field-label">作者（选填）</span>
+          <input type="text" id="input-author" class="field-input" placeholder="例：余华" maxlength="80">
+        </label>
+
+        <div id="digital-fields" class="hidden">
+          <label class="field">
+            <span class="field-label">正文</span>
+            <textarea id="input-content" class="field-textarea" rows="8" placeholder="粘贴文字，或使用下方导入文件…"></textarea>
+          </label>
+
+          <label class="field field-file">
+            <span class="field-label">导入文件</span>
+            <input type="file" id="input-file" accept=".txt,.md,.text" class="field-file-input">
+            <span class="field-file-hint">支持 .txt / .md</span>
+          </label>
+        </div>
+
+        <footer class="dialog-footer">
+          <button type="button" class="btn btn-ghost" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">加入书架</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- 阅读设置 -->
+    <dialog id="dialog-settings" class="dialog">
+      <form id="form-settings" class="dialog-body" method="dialog">
+        <header class="dialog-header">
+          <h3>外观设置</h3>
+          <button type="button" class="btn-icon dialog-close" data-close aria-label="关闭">×</button>
+        </header>
+
+        <div class="settings-group">
+          <span class="field-label">主题</span>
+          <div class="chip-group" role="group" aria-label="主题">
+            <button type="button" class="chip" data-theme="light">浅色</button>
+            <button type="button" class="chip" data-theme="sepia">护眼</button>
+            <button type="button" class="chip" data-theme="dark">深色</button>
+          </div>
+        </div>
+
+        <label class="field field-range">
+          <span class="field-label">字号 <output id="out-font-size">18</output>px</span>
+          <input type="range" id="range-font-size" min="14" max="28" step="1" value="18">
+        </label>
+
+        <label class="field field-range">
+          <span class="field-label">行距 <output id="out-line-height">1.85</output></span>
+          <input type="range" id="range-line-height" min="1.4" max="2.4" step="0.05" value="1.85">
+        </label>
+
+        <label class="field field-range">
+          <span class="field-label">页边距 <output id="out-margin">1.2</output>rem</span>
+          <input type="range" id="range-margin" min="0.6" max="2.4" step="0.1" value="1.2">
+        </label>
+
+        <div class="settings-group">
+          <span class="field-label">阅读模式</span>
+          <div class="chip-group" role="group" aria-label="阅读模式">
+            <button type="button" class="chip" data-mode="scroll">滚动</button>
+            <button type="button" class="chip" data-mode="page">分页</button>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <span class="field-label">字体</span>
+          <div class="chip-group" role="group" aria-label="字体">
+            <button type="button" class="chip" data-font="serif">宋体</button>
+            <button type="button" class="chip" data-font="sans">黑体</button>
+          </div>
+        </div>
+
+        <footer class="dialog-footer">
+          <button type="submit" class="btn btn-primary">完成</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <!-- 书籍操作 -->
+    <dialog id="dialog-book-actions" class="dialog dialog-sheet">
+      <div class="dialog-body">
+        <header class="dialog-header">
+          <h3 id="action-book-title">书籍</h3>
+          <button type="button" class="btn-icon dialog-close" data-close aria-label="关闭">×</button>
+        </header>
+        <div class="action-list">
+          <button type="button" class="action-item" id="action-open">打开</button>
+          <button type="button" class="action-item" id="action-notes">查看笔记</button>
+          <button type="button" class="action-item" id="action-restart">从头开始</button>
+          <button type="button" class="action-item action-danger" id="action-delete">从书架删除</button>
+        </div>
+      </div>
+    </dialog>
+
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
