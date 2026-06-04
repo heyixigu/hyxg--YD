@@ -397,17 +397,20 @@
     if (notesList.dataset.dragBound) return;
     notesList.dataset.dragBound = "1";
 
+    const LONG_PRESS_MS = 420;
+    const MOVE_CANCEL_PX = 12;
+
     let dragState = null;
+    let pending = null;
 
-    notesList.addEventListener("pointerdown", (e) => {
-      const handle = e.target.closest(".note-drag-handle");
-      if (!handle) return;
-      e.preventDefault();
-      e.stopPropagation();
+    function cancelPending() {
+      if (!pending) return;
+      clearTimeout(pending.timer);
+      pending.handle.classList.remove("is-press-waiting");
+      pending = null;
+    }
 
-      const item = handle.closest(".note-item");
-      if (!item) return;
-
+    function startFloatingDrag(item, handle, clientX, clientY, pointerId) {
       const rect = item.getBoundingClientRect();
       const placeholder = document.createElement("li");
       placeholder.className = "note-item note-drag-placeholder";
@@ -422,27 +425,39 @@
       document.body.appendChild(item);
 
       notesList.classList.add("is-sorting");
+      document.body.classList.add("is-note-dragging");
 
       dragState = {
         item,
         placeholder,
         handle,
-        offsetY: e.clientY - rect.top,
+        offsetY: clientY - rect.top,
         moved: false,
-        pointerId: e.pointerId,
+        pointerId,
       };
 
       requestAnimationFrame(() => item.classList.add("is-dragging-active"));
 
-      handle.setPointerCapture(e.pointerId);
-    });
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {
+        /* 部分环境 setPointerCapture 不可用 */
+      }
+    }
 
-    notesList.addEventListener("pointermove", (e) => {
-      if (!dragState) return;
+    function onDocumentPointerMove(e) {
+      if (pending && !dragState && e.pointerId === pending.pointerId) {
+        const dx = e.clientX - pending.startX;
+        const dy = e.clientY - pending.startY;
+        if (Math.hypot(dx, dy) > MOVE_CANCEL_PX) cancelPending();
+        return;
+      }
+
+      if (!dragState || e.pointerId !== dragState.pointerId) return;
+      e.preventDefault();
 
       const { item, placeholder, offsetY } = dragState;
       dragState.moved = true;
-
       item.style.top = `${e.clientY - offsetY}px`;
 
       const after = getNoteDragAfterElement(e.clientY);
@@ -454,31 +469,36 @@
       } else if (after !== placeholder && after !== prevNext) {
         movePlaceholderWithAnimation(placeholder, after);
       }
-    });
+    }
 
-    const endDrag = (e) => {
-      if (!dragState) return;
+    function endDrag(e) {
+      if (!dragState || e.pointerId !== dragState.pointerId) return;
+
       const { item, placeholder, handle, moved, pointerId } = dragState;
 
-      if (handle?.hasPointerCapture?.(pointerId)) {
-        handle.releasePointerCapture(pointerId);
+      try {
+        if (handle?.hasPointerCapture?.(pointerId)) {
+          handle.releasePointerCapture(pointerId);
+        }
+      } catch {
+        /* ignore */
       }
 
       item.classList.remove("is-dragging-active");
       const destRect = placeholder.getBoundingClientRect();
-
       item.style.left = `${destRect.left}px`;
       item.style.top = `${destRect.top}px`;
       item.style.width = `${destRect.width}px`;
 
       const finish = () => {
-        item.classList.remove("is-dragging-floating", "is-dragging-active");
+        item.classList.remove("is-dragging-floating", "is-dragging-active", "is-snapping");
         item.style.left = "";
         item.style.top = "";
         item.style.width = "";
         notesList.insertBefore(item, placeholder);
         placeholder.remove();
         notesList.classList.remove("is-sorting");
+        document.body.classList.remove("is-note-dragging");
         clearFlipTransforms();
 
         if (moved) {
@@ -500,16 +520,60 @@
       requestAnimationFrame(() => item.classList.add("is-snapping"));
 
       setTimeout(() => {
-        if (dragState) {
-          item.removeEventListener("transitionend", onSnapEnd);
-          item.classList.remove("is-snapping");
-          finish();
-        }
+        if (!dragState) return;
+        item.removeEventListener("transitionend", onSnapEnd);
+        finish();
       }, 320);
-    };
+    }
 
-    notesList.addEventListener("pointerup", endDrag);
-    notesList.addEventListener("pointercancel", endDrag);
+    function onDocumentPointerUp(e) {
+      if (pending && e.pointerId === pending.pointerId) {
+        cancelPending();
+        return;
+      }
+      endDrag(e);
+    }
+
+    document.addEventListener("pointermove", onDocumentPointerMove, { passive: false });
+    document.addEventListener("pointerup", onDocumentPointerUp);
+    document.addEventListener("pointercancel", onDocumentPointerUp);
+
+    notesList.addEventListener(
+      "pointerdown",
+      (e) => {
+        const handle = e.target.closest(".note-drag-handle");
+        if (!handle || dragState) return;
+
+        const item = handle.closest(".note-item");
+        if (!item) return;
+
+        e.stopPropagation();
+        cancelPending();
+
+        const isTouch = e.pointerType === "touch";
+
+        if (isTouch) {
+          pending = {
+            handle,
+            item,
+            pointerId: e.pointerId,
+            startX: e.clientX,
+            startY: e.clientY,
+            timer: setTimeout(() => {
+              if (!pending) return;
+              const p = pending;
+              cancelPending();
+              startFloatingDrag(p.item, p.handle, p.startX, p.startY, p.pointerId);
+            }, LONG_PRESS_MS),
+          };
+          handle.classList.add("is-press-waiting");
+        } else {
+          e.preventDefault();
+          startFloatingDrag(item, handle, e.clientX, e.clientY, e.pointerId);
+        }
+      },
+      { passive: false }
+    );
   }
 
   function getFirstSentence(text) {
@@ -588,7 +652,7 @@
       li.className = "note-item";
       li.dataset.noteId = note.id;
       li.innerHTML = `
-        <button type="button" class="note-drag-handle" aria-label="拖动调整顺序" title="拖动排序">⠿</button>
+        <div class="note-drag-handle" role="button" tabindex="0" aria-label="长按拖动调整顺序" title="长按排序">⠿</div>
         <div class="note-card${isExpanded ? " is-expanded" : ""}" data-note-id="${note.id}" role="button" tabindex="0" aria-expanded="${isExpanded}">
           <div class="note-card-head">
             <div class="note-card-title-row">
@@ -982,7 +1046,12 @@
     });
 
     notesList.addEventListener("click", (e) => {
-      if (e.target.closest(".note-drag-handle") || notesList.dataset.justDragged) return;
+      if (
+        e.target.closest(".note-drag-handle") ||
+        notesList.dataset.justDragged ||
+        notesList.classList.contains("is-sorting")
+      )
+        return;
 
       const editBtn = e.target.closest(".note-edit-btn");
       if (editBtn) {

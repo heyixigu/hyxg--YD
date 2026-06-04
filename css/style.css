@@ -535,8 +535,8 @@ button {
 
 .note-drag-handle {
   flex-shrink: 0;
-  width: 36px;
-  min-height: 44px;
+  width: 40px;
+  min-height: 48px;
   display: grid;
   place-items: center;
   align-self: center;
@@ -547,14 +547,38 @@ button {
   letter-spacing: -2px;
   cursor: grab;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
   border-radius: var(--radius-sm);
-  transition: color var(--transition), background var(--transition);
+  transition: color var(--transition), background var(--transition), transform 0.15s ease;
+}
+
+.note-drag-handle.is-press-waiting {
+  color: var(--accent);
+  background: var(--accent-soft);
+  transform: scale(1.08);
+  animation: press-hold-pulse 0.42s ease-in-out infinite;
+}
+
+@keyframes press-hold-pulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
 }
 
 .note-drag-handle:active {
   cursor: grabbing;
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+body.is-note-dragging {
+  touch-action: none;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body.is-note-dragging .notes-list {
+  touch-action: none;
 }
 
 .note-card {
