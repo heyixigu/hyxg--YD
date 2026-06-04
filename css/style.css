@@ -442,17 +442,124 @@ button {
   font-size: 0.88rem;
 }
 
+.notes-sort-hint {
+  margin: 0;
+  padding: 8px 16px 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 .notes-list {
   list-style: none;
   margin: 0;
-  padding: 12px 16px 88px;
+  padding: 8px 12px 88px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
 }
 
+.notes-list.is-sorting .note-item:not(.is-dragging-floating) {
+  transition: transform 0.28s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.note-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  list-style: none;
+}
+
+.note-item.is-flipping {
+  will-change: transform;
+  z-index: 1;
+}
+
+.note-drag-placeholder {
+  flex-shrink: 0;
+  margin: 0;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  opacity: 0.55;
+  transition: height 0.22s ease, opacity 0.22s ease;
+  pointer-events: none;
+  animation: placeholder-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes placeholder-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.7; }
+}
+
+.note-item.is-dragging-floating {
+  position: fixed;
+  z-index: 200;
+  margin: 0;
+  display: flex;
+  align-items: stretch;
+  pointer-events: none;
+  transform: scale(1.02) rotate(0.6deg);
+  transition:
+    transform 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2),
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.18));
+}
+
+.note-item.is-dragging-floating.is-dragging-active {
+  transform: scale(1.04) rotate(1deg);
+}
+
+.note-item.is-dragging-floating.is-snapping {
+  transition:
+    top 0.28s cubic-bezier(0.25, 0.8, 0.25, 1),
+    left 0.28s cubic-bezier(0.25, 0.8, 0.25, 1),
+    width 0.28s ease,
+    transform 0.28s cubic-bezier(0.25, 0.8, 0.25, 1),
+    filter 0.28s ease;
+  transform: scale(1) rotate(0deg);
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.1));
+}
+
+.note-item.is-dragging-floating .note-card {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.14);
+  border-color: var(--accent);
+}
+
+.note-item.is-dragging-floating .note-drag-handle {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.note-drag-handle {
+  flex-shrink: 0;
+  width: 36px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  letter-spacing: -2px;
+  cursor: grab;
+  touch-action: none;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+}
+
+.note-drag-handle:active {
+  cursor: grabbing;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .note-card {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   text-align: left;
   padding: 10px 14px;
@@ -466,6 +573,10 @@ button {
 
 .note-card.is-expanded {
   padding: 14px 16px;
+}
+
+.notes-list.is-sorting .note-card:active {
+  transform: none;
 }
 
 .note-card:active {

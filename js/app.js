@@ -70,10 +70,24 @@
     return {
       question: "",
       reflection: "",
+      order: null,
       ...note,
       question: note.question || "",
       reflection: note.reflection || "",
     };
+  }
+
+  function ensureBookNoteOrders(notes) {
+    if (!notes.length) return;
+    const needsInit = notes.some((n) => n.order == null || !Number.isFinite(n.order));
+    if (!needsInit) {
+      notes.sort((a, b) => a.order - b.order);
+      return;
+    }
+    notes.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    notes.forEach((n, i) => {
+      n.order = i;
+    });
   }
 
   function loadSettings() {
@@ -102,6 +116,7 @@
     return list.map((book) => {
       const hasContent = Boolean(book.content?.trim());
       const notes = Array.isArray(book.notes) ? book.notes.map(migrateNote) : [];
+      ensureBookNoteOrders(notes);
       return {
         author: "",
         notes: [],
@@ -305,7 +320,196 @@
   }
 
   function sortNotes(notes) {
-    return [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...notes].sort((a, b) => {
+      const oa = Number.isFinite(a.order) ? a.order : Infinity;
+      const ob = Number.isFinite(b.order) ? b.order : Infinity;
+      if (oa !== ob) return oa - ob;
+      return (a.createdAt || 0) - (b.createdAt || 0);
+    });
+  }
+
+  function nextNoteOrder(notes) {
+    if (!notes.length) return 0;
+    return Math.max(...notes.map((n) => (Number.isFinite(n.order) ? n.order : 0))) + 1;
+  }
+
+  function persistNoteOrderFromDom() {
+    const book = getBook(currentBookId);
+    if (!book) return;
+    const ids = [...notesList.querySelectorAll(".note-item")].map((el) => el.dataset.noteId);
+    ids.forEach((id, index) => {
+      const note = book.notes.find((n) => n.id === id);
+      if (note) note.order = index;
+    });
+    touchBook(book);
+  }
+
+  function getNoteDragAfterElement(y) {
+    const items = [...notesList.querySelectorAll(".note-item:not(.is-dragging-floating)")];
+    let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+    items.forEach((child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        closest = { offset, element: child };
+      }
+    });
+    return closest.element;
+  }
+
+  function movePlaceholderWithAnimation(placeholder, after) {
+    const items = [...notesList.querySelectorAll(".note-item:not(.is-dragging-floating)")];
+    const firstRects = new Map(
+      items.map((el) => [el, el.getBoundingClientRect()])
+    );
+
+    if (after == null) {
+      notesList.appendChild(placeholder);
+    } else {
+      notesList.insertBefore(placeholder, after);
+    }
+
+    requestAnimationFrame(() => {
+      items.forEach((el) => {
+        const first = firstRects.get(el);
+        if (!first) return;
+        const last = el.getBoundingClientRect();
+        const dy = first.top - last.top;
+        if (Math.abs(dy) < 1) return;
+
+        el.classList.add("is-flipping");
+        el.style.transform = `translateY(${dy}px)`;
+        requestAnimationFrame(() => {
+          el.style.transform = "";
+        });
+      });
+    });
+  }
+
+  function clearFlipTransforms() {
+    notesList.querySelectorAll(".note-item.is-flipping").forEach((el) => {
+      el.classList.remove("is-flipping");
+      el.style.transform = "";
+    });
+  }
+
+  function bindNoteDragReorder() {
+    if (notesList.dataset.dragBound) return;
+    notesList.dataset.dragBound = "1";
+
+    let dragState = null;
+
+    notesList.addEventListener("pointerdown", (e) => {
+      const handle = e.target.closest(".note-drag-handle");
+      if (!handle) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const item = handle.closest(".note-item");
+      if (!item) return;
+
+      const rect = item.getBoundingClientRect();
+      const placeholder = document.createElement("li");
+      placeholder.className = "note-item note-drag-placeholder";
+      placeholder.setAttribute("aria-hidden", "true");
+      placeholder.style.height = `${rect.height}px`;
+
+      notesList.insertBefore(placeholder, item);
+      item.classList.add("is-dragging-floating");
+      item.style.width = `${rect.width}px`;
+      item.style.left = `${rect.left}px`;
+      item.style.top = `${rect.top}px`;
+      document.body.appendChild(item);
+
+      notesList.classList.add("is-sorting");
+
+      dragState = {
+        item,
+        placeholder,
+        handle,
+        offsetY: e.clientY - rect.top,
+        moved: false,
+        pointerId: e.pointerId,
+      };
+
+      requestAnimationFrame(() => item.classList.add("is-dragging-active"));
+
+      handle.setPointerCapture(e.pointerId);
+    });
+
+    notesList.addEventListener("pointermove", (e) => {
+      if (!dragState) return;
+
+      const { item, placeholder, offsetY } = dragState;
+      dragState.moved = true;
+
+      item.style.top = `${e.clientY - offsetY}px`;
+
+      const after = getNoteDragAfterElement(e.clientY);
+      const prevNext = placeholder.nextElementSibling;
+      if (after == null) {
+        if (placeholder !== notesList.lastElementChild) {
+          movePlaceholderWithAnimation(placeholder, null);
+        }
+      } else if (after !== placeholder && after !== prevNext) {
+        movePlaceholderWithAnimation(placeholder, after);
+      }
+    });
+
+    const endDrag = (e) => {
+      if (!dragState) return;
+      const { item, placeholder, handle, moved, pointerId } = dragState;
+
+      if (handle?.hasPointerCapture?.(pointerId)) {
+        handle.releasePointerCapture(pointerId);
+      }
+
+      item.classList.remove("is-dragging-active");
+      const destRect = placeholder.getBoundingClientRect();
+
+      item.style.left = `${destRect.left}px`;
+      item.style.top = `${destRect.top}px`;
+      item.style.width = `${destRect.width}px`;
+
+      const finish = () => {
+        item.classList.remove("is-dragging-floating", "is-dragging-active");
+        item.style.left = "";
+        item.style.top = "";
+        item.style.width = "";
+        notesList.insertBefore(item, placeholder);
+        placeholder.remove();
+        notesList.classList.remove("is-sorting");
+        clearFlipTransforms();
+
+        if (moved) {
+          persistNoteOrderFromDom();
+          notesList.dataset.justDragged = "1";
+          setTimeout(() => delete notesList.dataset.justDragged, 320);
+        }
+
+        dragState = null;
+      };
+
+      const onSnapEnd = (ev) => {
+        if (ev.propertyName !== "transform" && ev.propertyName !== "top") return;
+        item.removeEventListener("transitionend", onSnapEnd);
+        finish();
+      };
+
+      item.addEventListener("transitionend", onSnapEnd);
+      requestAnimationFrame(() => item.classList.add("is-snapping"));
+
+      setTimeout(() => {
+        if (dragState) {
+          item.removeEventListener("transitionend", onSnapEnd);
+          item.classList.remove("is-snapping");
+          finish();
+        }
+      }, 320);
+    };
+
+    notesList.addEventListener("pointerup", endDrag);
+    notesList.addEventListener("pointercancel", endDrag);
   }
 
   function getFirstSentence(text) {
@@ -381,7 +585,10 @@
       const isExpanded = expandedNoteId === note.id;
       const preview = getNotePreview(note);
 
+      li.className = "note-item";
+      li.dataset.noteId = note.id;
       li.innerHTML = `
+        <button type="button" class="note-drag-handle" aria-label="拖动调整顺序" title="拖动排序">⠿</button>
         <div class="note-card${isExpanded ? " is-expanded" : ""}" data-note-id="${note.id}" role="button" tabindex="0" aria-expanded="${isExpanded}">
           <div class="note-card-head">
             <div class="note-card-title-row">
@@ -398,6 +605,7 @@
       `;
       notesList.appendChild(li);
     });
+    bindNoteDragReorder();
   }
 
   function openNotes(id) {
@@ -475,6 +683,7 @@
       book.notes.push({
         id: uid(),
         ...fields,
+        order: nextNoteOrder(book.notes),
         createdAt: now,
         updatedAt: now,
       });
@@ -493,6 +702,7 @@
     if (!confirm("确定删除这条笔记吗？")) return;
 
     book.notes = book.notes.filter((n) => n.id !== editingNoteId);
+    ensureBookNoteOrders(book.notes);
     if (expandedNoteId === editingNoteId) expandedNoteId = null;
     touchBook(book);
     editingNoteId = null;
@@ -772,6 +982,8 @@
     });
 
     notesList.addEventListener("click", (e) => {
+      if (e.target.closest(".note-drag-handle") || notesList.dataset.justDragged) return;
+
       const editBtn = e.target.closest(".note-edit-btn");
       if (editBtn) {
         e.stopPropagation();
@@ -968,15 +1180,17 @@
               "「人是为了活着本身而活着，而不是为了活着之外的任何事物而活着。」",
             question: "",
             reflection: "这句话点出了全书的核心，读后仍有余韵。",
+            order: 0,
             createdAt: Date.now() - 86400000,
             updatedAt: Date.now() - 86400000,
           },
           {
             id: uid(),
-            chapter: "第一章",
+            chapter: "第二章",
             content: "",
             question: "为什么主角在这个时候做出了这个选择？",
             reflection: "",
+            order: 1,
             createdAt: Date.now(),
             updatedAt: Date.now(),
           },
